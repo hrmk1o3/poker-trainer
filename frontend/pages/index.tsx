@@ -234,9 +234,9 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <main className="min-h-screen bg-gradient-to-b from-green-800 to-green-900 p-4">
+      <main className="min-h-screen bg-gradient-to-b from-green-800 to-green-900 p-1 sm:p-2 md:p-3">
         <div className="container mx-auto">
-          <h1 className="text-4xl font-bold text-center text-white mb-8">
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-center text-white mb-1 sm:mb-2 md:mb-3 lg:mb-4">
             9-Max No Limit Hold&apos;em
           </h1>
 
@@ -277,28 +277,28 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-white">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-1 sm:mb-2 gap-1 sm:gap-2">
+                <div className="text-white text-[0.65rem] sm:text-xs md:text-sm">
                   <p>Table ID: {tableId}</p>
                   <p>Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
-                  <p className="text-sm mt-2">
+                  <p className="text-[0.6rem] mt-0.5 hidden lg:block">
                     Share this URL to invite others:
-                    <span className="bg-gray-800 px-2 py-1 rounded ml-2 font-mono text-xs">
+                    <span className="bg-gray-800 px-1.5 py-0.5 rounded ml-1 font-mono text-[0.6rem]">
                       {typeof window !== 'undefined' ? window.location.origin + `/?tableId=${tableId}` : ''}
                     </span>
                   </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-1 sm:gap-2">
                   <button
                     onClick={addAIPlayer}
-                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition"
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-3 md:py-2 md:px-4 text-xs sm:text-sm md:text-base rounded transition"
                   >
                     Add AI Player
                   </button>
                   {gameState?.phase === 'waiting' && (
                     <button
                       onClick={startHand}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-3 md:py-2 md:px-4 text-xs sm:text-sm md:text-base rounded transition"
                     >
                       Start Hand
                     </button>

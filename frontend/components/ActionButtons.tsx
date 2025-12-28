@@ -86,14 +86,14 @@ export default function ActionButtons({
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-      <div className="flex flex-wrap gap-3 justify-center items-center">
-        
+    <div className="bg-gray-800 rounded p-1 sm:p-1.5 md:p-2 lg:p-4 shadow-lg max-w-full">
+      <div className="flex flex-wrap gap-1 sm:gap-1.5 md:gap-2 justify-center items-center">
+
         {/* Fold Button */}
         {canShowFold && (
           <button
             onClick={handleFold}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg"
           >
             Fold
           </button>
@@ -103,7 +103,7 @@ export default function ActionButtons({
         {canShowCheck && (
           <button
             onClick={handleCheck}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg"
           >
             Check
           </button>
@@ -111,7 +111,7 @@ export default function ActionButtons({
         {canShowCall && (
           <button
             onClick={handleCall}
-            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg whitespace-nowrap"
           >
             Call ${callAmount}
           </button>
@@ -119,27 +119,27 @@ export default function ActionButtons({
 
         {/* Raise/Bet Controls */}
         {(canShowBet || canShowRaise) && (
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-1 items-center">
             <input
               type="number"
               value={raiseAmount}
               onChange={(e) => setRaiseAmount(parseInt(e.target.value) || 0)}
               min={currentBet > 0 ? minRaise : 1}
               max={playerStack}
-              className="w-32 px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-black font-bold"
+              className="w-12 sm:w-14 md:w-16 lg:w-20 px-1 sm:px-1.5 md:px-2 py-1 sm:py-1.5 md:py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 text-black font-bold text-xs sm:text-sm md:text-base"
             />
-            
+
             {canShowRaise && currentBet > 0 ? (
               <button
                 onClick={handleRaise}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg"
               >
                 Raise
               </button>
             ) : canShowBet && currentBet === 0 ? (
               <button
                 onClick={handleBet}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg"
               >
                 Bet
               </button>
@@ -150,23 +150,23 @@ export default function ActionButtons({
         {/* All-In Button */}
         <button
           onClick={handleAllIn}
-          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-2.5 md:py-2 md:px-3 lg:py-2.5 lg:px-5 text-xs sm:text-sm md:text-base rounded transition shadow-lg whitespace-nowrap"
         >
           All-In ${playerStack}
         </button>
       </div>
 
       {/* Quick Bet Buttons */}
-      <div className="flex gap-2 justify-center mt-4">
+      <div className="flex flex-wrap gap-1 justify-center mt-1 sm:mt-1.5 md:mt-2">
         <button
           onClick={() => setRaiseAmount(minRaise)}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+          className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           Min
         </button>
         <button
           onClick={() => setRaiseAmount(Math.min(bigBlind * 3, playerStack))}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+          className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           3x BB
         </button>
@@ -175,13 +175,13 @@ export default function ActionButtons({
             const pot = currentBet * 2 // Simplified pot calculation
             setRaiseAmount(Math.min(Math.floor(pot), playerStack))
           }}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+          className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           Pot
         </button>
         <button
           onClick={() => setRaiseAmount(playerStack)}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+          className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           All-In
         </button>

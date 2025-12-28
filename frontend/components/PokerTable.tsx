@@ -32,33 +32,33 @@ export default function PokerTable({ gameState, playerId, onAction }: PokerTable
   return (
     <div className="relative w-full max-w-6xl mx-auto">
       {/* Poker Table */}
-      <div className="relative bg-green-700 rounded-full border-8 border-yellow-800 shadow-2xl" style={{ paddingTop: '60%' }}>
+      <div className="relative bg-green-700 rounded-full border-2 sm:border-4 md:border-6 lg:border-8 shadow-2xl" style={{ paddingTop: '40%' }}>
         
         {/* Center Area - Community Cards and Pot */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
           {/* Community Cards */}
-          <div className="flex gap-2 mb-4 justify-center">
+          <div className="flex gap-0.5 sm:gap-1 md:gap-1.5 mb-1 sm:mb-2 md:mb-3 justify-center">
             {community_cards.length > 0 ? (
               community_cards.map((card, idx) => (
                 <div
                   key={idx}
-                  className="bg-white rounded-lg shadow-lg w-16 h-24 flex items-center justify-center text-2xl font-bold border-2 border-gray-300"
+                  className="bg-white rounded shadow-lg w-8 h-11 sm:w-10 sm:h-14 md:w-12 md:h-16 lg:w-14 lg:h-20 flex items-center justify-center text-xs sm:text-sm md:text-base lg:text-xl font-bold border border-gray-300"
                 >
                   {formatCard(card)}
                 </div>
               ))
             ) : (
-              <div className="text-white text-lg">No community cards yet</div>
+              <div className="text-white text-[0.65rem] sm:text-xs md:text-sm lg:text-base">No community cards yet</div>
             )}
           </div>
 
           {/* Pot */}
-          <div className="bg-yellow-600 text-white font-bold px-6 py-3 rounded-full shadow-lg">
+          <div className="bg-yellow-600 text-white font-bold px-2 py-1 sm:px-3 sm:py-1.5 md:px-4 md:py-2 text-xs sm:text-sm md:text-base rounded-full shadow-lg">
             Pot: ${pot}
           </div>
 
           {/* Phase */}
-          <div className="mt-2 text-white font-semibold uppercase">
+          <div className="mt-0.5 sm:mt-1 md:mt-1.5 text-white font-semibold uppercase text-[0.65rem] sm:text-xs md:text-sm">
             {phase}
           </div>
         </div>
@@ -85,7 +85,7 @@ export default function PokerTable({ gameState, playerId, onAction }: PokerTable
 
       {/* Action Buttons */}
       {isCurrentPlayerTurn && currentPlayer && phase !== 'waiting' && phase !== 'finished' && (
-        <div className="mt-8">
+        <div className="mt-1 sm:mt-2 md:mt-3">
           <ActionButtons
             currentBet={current_bet}
             playerBet={currentPlayer.bet}
@@ -100,10 +100,10 @@ export default function PokerTable({ gameState, playerId, onAction }: PokerTable
       )}
 
       {/* Game Info */}
-      <div className="mt-4 text-white text-center">
-        <p className="text-sm">
-          Current Bet: ${current_bet} | 
-          Small Blind: ${gameState.small_blind} | 
+      <div className="mt-1 sm:mt-2 md:mt-3 text-white text-center">
+        <p className="text-[0.65rem] sm:text-xs md:text-sm">
+          Current Bet: ${current_bet} |
+          Small Blind: ${gameState.small_blind} |
           Big Blind: ${gameState.big_blind}
         </p>
       </div>
