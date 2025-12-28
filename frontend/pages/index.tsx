@@ -15,6 +15,7 @@ export default function Home() {
   const [playerName, setPlayerName] = useState<string>('')
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [copySuccess, setCopySuccess] = useState(false)
 
   // Get tableId from URL query parameter
   useEffect(() => {
@@ -167,7 +168,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         const errorMessage = errorData.detail || errorData.message || 'Failed to start hand'
@@ -175,7 +176,7 @@ export default function Home() {
         console.error('Failed to start hand:', errorMessage)
         return
       }
-      
+
       const data = await response.json()
       if (data.state) {
         setGameState(data.state)
@@ -183,6 +184,22 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to start hand:', error)
       alert('Failed to start hand. Please check the console for details.')
+    }
+  }
+
+  // Copy URL to clipboard
+  const copyToClipboard = async () => {
+    if (!tableId || typeof window === 'undefined') return
+
+    const url = window.location.origin + `/?tableId=${tableId}`
+
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error)
+      alert('Failed to copy URL to clipboard')
     }
   }
 
@@ -281,14 +298,14 @@ export default function Home() {
                 <div className="text-white text-[0.65rem] sm:text-xs md:text-sm">
                   <p>Table ID: {tableId}</p>
                   <p>Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
-                  <p className="text-[0.6rem] mt-0.5 hidden lg:block">
-                    Share this URL to invite others:
-                    <span className="bg-gray-800 px-1.5 py-0.5 rounded ml-1 font-mono text-[0.6rem]">
-                      {typeof window !== 'undefined' ? window.location.origin + `/?tableId=${tableId}` : ''}
-                    </span>
-                  </p>
                 </div>
                 <div className="flex gap-1 sm:gap-2">
+                  <button
+                    onClick={copyToClipboard}
+                    className={`${copySuccess ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-700'} text-white font-bold py-1 px-2 sm:py-1.5 sm:px-3 md:py-2 md:px-4 text-xs sm:text-sm md:text-base rounded transition`}
+                  >
+                    {copySuccess ? 'Copied!' : 'Share'}
+                  </button>
                   <button
                     onClick={addAIPlayer}
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-2 sm:py-1.5 sm:px-3 md:py-2 md:px-4 text-xs sm:text-sm md:text-base rounded transition"
