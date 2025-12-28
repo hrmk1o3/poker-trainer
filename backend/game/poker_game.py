@@ -114,12 +114,17 @@ class PokerGame:
         """Add a new player to the table."""
         if len(self.players) >= self.max_players:
             return None
-        
+
         player_id = str(uuid.uuid4())
         position = len(self.players)
         player = Player(player_id, name, self.starting_stack, position)
+
+        # If game is in progress, set player as inactive until next hand
+        if self.phase != GamePhase.WAITING:
+            player.is_active = False
+
         self.players.append(player)
-        
+
         return player_id
     
     def start_new_hand(self):
