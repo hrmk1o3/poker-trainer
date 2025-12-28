@@ -100,9 +100,13 @@ class PokerGame:
         self.community_cards: List[Card] = []
         self.pot = 0
         self.current_bet = 0
+        self.last_raise_size = 0  # Track the size of the last raise (for minimum raise calculation)
         self.phase = GamePhase.WAITING
         self.dealer_position = 0
         self.current_player_index = 0
+        self.betting_round_start_index = 0  # Track where betting round started
+        self.last_raiser_index = None  # Track the last player who raised/bet (for round completion)
+        self.bb_has_acted_preflop = False  # Track if BB has acted in preflop (after posting blind)
         self.hand_id = None
         self.action_history = []
     
@@ -142,11 +146,23 @@ class PokerGame:
         # Post blinds
         self._post_blinds()
         
+        # Initialize last_raise_size to big blind for preflop
+        self.last_raise_size = self.big_blind
+
+        # Reset BB action flag for preflop
+        self.bb_has_acted_preflop = False
+
         # Deal hole cards
         self._deal_hole_cards()
-        
+
         # Set first player to act (after big blind)
         self.current_player_index = (self.dealer_position + 3) % len(self.players)
+        # For preflop, betting round completes when action returns to big blind
+        # Big blind is at dealer + 2
+        bb_index = (self.dealer_position + 2) % len(self.players)
+        self.betting_round_start_index = bb_index
+        # BB posted blind, so they are the initial "raiser" for preflop
+        self.last_raiser_index = bb_index
     
     def _post_blinds(self):
         """Post small and big blinds."""
@@ -190,14 +206,25 @@ class PokerGame:
         
         # Process action
         if action_type == ActionType.FOLD:
+            # Rule: Cannot fold if you can check (no additional chips needed to call)
+            # If player.bet >= current_bet, they can check, so they cannot fold
+            if player.bet >= self.current_bet:
+                raise ValueError("Cannot fold when you can check. You must check, bet, or raise.")
             player.has_folded = True
             player.is_active = False
         
         elif action_type == ActionType.CHECK:
             if player.bet < self.current_bet:
                 raise ValueError("Cannot check, must call or raise")
+            # Post-flop rule: Check is only allowed when no one has bet (current_bet == 0)
+            # In preflop, checking is allowed when player has matched the bet
+            if self.phase != GamePhase.PREFLOP and self.current_bet > 0:
+                raise ValueError("Cannot check when someone has bet. You must fold, call, or raise.")
         
         elif action_type == ActionType.CALL:
+            # Post-flop rule: Call is only allowed when someone has bet (current_bet > 0)
+            if self.phase != GamePhase.PREFLOP and self.current_bet == 0:
+                raise ValueError("Cannot call when no one has bet. You must check or bet.")
             call_amount = min(self.current_bet - player.bet, player.stack)
             player.stack -= call_amount
             player.bet += call_amount
@@ -206,13 +233,50 @@ class PokerGame:
                 player.is_all_in = True
         
         elif action_type == ActionType.RAISE or action_type == ActionType.BET:
-            if amount < self.current_bet * 2:
-                raise ValueError(f"Raise must be at least {self.current_bet * 2}")
-            raise_amount = min(amount, player.stack)
-            player.stack -= raise_amount
-            player.bet += raise_amount
-            self.pot += raise_amount
-            self.current_bet = player.bet
+            # Post-flop rule: Bet is only allowed when no one has bet (current_bet == 0)
+            # Raise is only allowed when someone has bet (current_bet > 0)
+            if self.phase != GamePhase.PREFLOP:
+                if action_type == ActionType.BET and self.current_bet > 0:
+                    raise ValueError("Cannot bet when someone has already bet. You must fold, call, or raise.")
+                if action_type == ActionType.RAISE and self.current_bet == 0:
+                    raise ValueError("Cannot raise when no one has bet. You must check or bet.")
+            
+            if self.current_bet > 0:
+                # Raise: must be at least the previous bet + the last raise size
+                # Or at least 2x the current bet (whichever is larger)
+                # For the first raise in a round, last_raise_size is the big blind
+                min_raise_amount = max(
+                    self.current_bet + (self.last_raise_size if self.last_raise_size > 0 else self.big_blind),
+                    self.current_bet * 2
+                )
+                if amount < min_raise_amount:
+                    raise ValueError(f"Raise must be at least {min_raise_amount}")
+                
+                # Calculate the raise size (amount - current_bet)
+                raise_size = amount - self.current_bet
+            else:
+                # Bet: must be at least the big blind
+                if amount < self.big_blind:
+                    raise ValueError(f"Bet must be at least {self.big_blind}")
+                raise_size = amount
+            
+            bet_amount = min(amount, player.stack)
+            player.stack -= bet_amount
+            player.bet += bet_amount
+            self.pot += bet_amount
+            
+            # Update current bet and last raise size
+            if player.bet > self.current_bet:
+                if self.current_bet > 0:
+                    # This is a raise, track the raise size
+                    self.last_raise_size = player.bet - self.current_bet
+                else:
+                    # This is a bet, the raise size is the bet amount
+                    self.last_raise_size = player.bet
+                self.current_bet = player.bet
+                # Track who raised/bet last - everyone else needs to act after this
+                self.last_raiser_index = self.current_player_index
+
             if player.stack == 0:
                 player.is_all_in = True
         
@@ -223,7 +287,27 @@ class PokerGame:
             self.pot += all_in_amount
             player.is_all_in = True
             if player.bet > self.current_bet:
+                # Update current bet and last raise size if this is a raise
+                if self.current_bet > 0:
+                    # This is an all-in raise, track the raise size
+                    self.last_raise_size = player.bet - self.current_bet
+                else:
+                    # This is an all-in bet, the raise size is the bet amount
+                    self.last_raise_size = player.bet
                 self.current_bet = player.bet
+                # Track who raised/bet last - everyone else needs to act after this
+                self.last_raiser_index = self.current_player_index
+        
+        # Track preflop actions for BB option rule
+        if self.phase == GamePhase.PREFLOP:
+            bb_index = (self.dealer_position + 2) % len(self.players)
+            bb_player = self.players[bb_index]
+
+            if player_id == bb_player.player_id:
+                # BB has acted (not just posted blind, but took an action)
+                # Any action (check, call, raise, fold, all-in) after posting blind counts
+                # The blind posting itself doesn't count as an action for betting round completion
+                self.bb_has_acted_preflop = True
         
         # Record action
         self.action_history.append({
@@ -241,30 +325,74 @@ class PokerGame:
     def _advance_action(self):
         """Move to next player or next phase."""
         active_players = [p for p in self.players if not p.has_folded and not p.is_all_in]
-        
+
         if len(active_players) <= 1:
             # Only one player left or everyone all-in, go to showdown
             self._complete_hand()
             return
-        
-        # Check if betting round is complete
+
+        # Move to next active player
+        self.current_player_index = (self.current_player_index + 1) % len(self.players)
+
+        # Skip folded/all-in players, but don't loop forever
+        attempts = 0
+        while (self.players[self.current_player_index].has_folded or \
+              self.players[self.current_player_index].is_all_in) and \
+              attempts < len(self.players):
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            attempts += 1
+
+        # Check if we've gone through all players (shouldn't happen normally)
+        if attempts >= len(self.players):
+            # All players are folded or all-in, complete hand
+            self._complete_hand()
+            return
+
+        # Check if betting round is complete AFTER moving to next player
+        # This ensures everyone has had a chance to act before completing
         if self._is_betting_round_complete():
             self._advance_phase()
-        else:
-            # Move to next active player
-            self.current_player_index = (self.current_player_index + 1) % len(self.players)
-            while self.players[self.current_player_index].has_folded or \
-                  self.players[self.current_player_index].is_all_in:
-                self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            return
     
     def _is_betting_round_complete(self) -> bool:
-        """Check if current betting round is complete."""
+        """Check if current betting round is complete.
+
+        The round is complete when:
+        1. All active players have matched the current bet
+        2. Action has returned to the player after the last raiser (or betting round start if no raises)
+        3. For preflop, BB must have acted (not just posted blind)
+        """
         active_players = [p for p in self.players if not p.has_folded and not p.is_all_in]
         if not active_players:
             return True
-        
+
+        if len(active_players) <= 1:
+            return True
+
         # All active players have matched the current bet
-        return all(p.bet == self.current_bet for p in active_players)
+        all_matched = all(p.bet == self.current_bet for p in active_players)
+
+        if not all_matched:
+            return False
+
+        # Determine the completion point:
+        # - If someone raised/bet, everyone after them needs to act, so we check if action returned to them
+        # - If no one raised, we check if action returned to the betting round start
+        completion_index = self.last_raiser_index if self.last_raiser_index is not None else self.betting_round_start_index
+
+        # Special case for preflop: BB must have acted (not just posted blind)
+        if self.phase == GamePhase.PREFLOP:
+            bb_index = (self.dealer_position + 2) % len(self.players)
+            # If BB is the completion point and they haven't acted yet, round is not complete
+            if completion_index == bb_index and not self.bb_has_acted_preflop:
+                return False
+
+        # Check if current player is at the completion point
+        # This means everyone after the last raiser has had a chance to act
+        if self.current_player_index == completion_index:
+            return True
+
+        return False
     
     def _advance_phase(self):
         """Advance to next phase of the hand."""
@@ -272,6 +400,8 @@ class PokerGame:
         for player in self.players:
             player.bet = 0
         self.current_bet = 0
+        self.last_raise_size = 0  # Reset raise size for new betting round
+        self.last_raiser_index = None  # Reset last raiser for new betting round
         
         if self.phase == GamePhase.PREFLOP:
             self.phase = GamePhase.FLOP
@@ -291,6 +421,9 @@ class PokerGame:
         while self.players[self.current_player_index].has_folded or \
               self.players[self.current_player_index].is_all_in:
             self.current_player_index = (self.current_player_index + 1) % len(self.players)
+        
+        # Track where this betting round started
+        self.betting_round_start_index = self.current_player_index
     
     def _complete_hand(self):
         """Complete the hand and determine winner."""
@@ -306,7 +439,7 @@ class PokerGame:
         
         self.phase = GamePhase.FINISHED
     
-    def get_state(self) -> Dict:
+    def get_state(self, requesting_player_id: str = None) -> Dict:
         """Get current game state."""
         current_player_id = None
         if self.phase in [GamePhase.PREFLOP, GamePhase.FLOP, GamePhase.TURN, GamePhase.RIVER]:
@@ -318,7 +451,7 @@ class PokerGame:
             "phase": self.phase.value,
             "players": [
                 {
-                    **p.to_dict(show_cards=False),
+                    **p.to_dict(show_cards=(requesting_player_id == p.player_id)),
                     "is_dealer": i == self.dealer_position,
                     "is_small_blind": i == (self.dealer_position + 1) % len(self.players) if len(self.players) > 1 else False,
                     "is_big_blind": i == (self.dealer_position + 2) % len(self.players) if len(self.players) > 1 else False,
@@ -328,6 +461,7 @@ class PokerGame:
             "community_cards": [str(card) for card in self.community_cards],
             "pot": self.pot,
             "current_bet": self.current_bet,
+            "last_raise_size": self.last_raise_size,
             "current_player_id": current_player_id,
             "dealer_position": self.dealer_position,
             "small_blind": self.small_blind,

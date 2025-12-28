@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import PokerTable from '@/components/PokerTable'
 import { GameState, PlayerAction } from '@/lib/types'
 
@@ -7,12 +8,21 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000'
 
 export default function Home() {
+  const router = useRouter()
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [tableId, setTableId] = useState<string | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState<string>('')
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+
+  // Get tableId from URL query parameter
+  useEffect(() => {
+    const { tableId: urlTableId } = router.query
+    if (urlTableId && typeof urlTableId === 'string') {
+      setTableId(urlTableId)
+    }
+  }, [router.query])
 
   // Create a new table
   const createTable = async () => {
@@ -27,8 +37,11 @@ export default function Home() {
         })
       })
       const data = await response.json()
-      setTableId(data.table_id)
-      return data.table_id
+      const tid = data.table_id
+      setTableId(tid)
+      // Update URL with table ID
+      router.push(`/?tableId=${tid}`, undefined, { shallow: true })
+      return tid
     } catch (error) {
       console.error('Failed to create table:', error)
     }
@@ -50,7 +63,7 @@ export default function Home() {
   }
 
   // Connect to WebSocket
-  const connectWebSocket = useCallback((tid: string) => {
+  const connectWebSocket = useCallback((tid: string, pid: string | null = null) => {
     const websocket = new WebSocket(`${WS_URL}/ws/${tid}`)
     
     websocket.onopen = () => {
@@ -58,12 +71,24 @@ export default function Home() {
       setIsConnected(true)
     }
     
-    websocket.onmessage = (event) => {
+    websocket.onmessage = async (event) => {
       const message = JSON.parse(event.data)
       console.log('Received message:', message)
       
       if (message.state) {
-        setGameState(message.state)
+        // Fetch state with player_id to get hole cards
+        if (pid) {
+          try {
+            const response = await fetch(`${API_URL}/api/tables/${tid}/state?player_id=${pid}`)
+            const data = await response.json()
+            setGameState(data)
+          } catch (error) {
+            console.error('Failed to fetch state with hole cards:', error)
+            setGameState(message.state)
+          }
+        } else {
+          setGameState(message.state)
+        }
       }
     }
     
@@ -116,12 +141,22 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        const errorMessage = errorData.detail || errorData.message || 'Failed to start hand'
+        alert(errorMessage)
+        console.error('Failed to start hand:', errorMessage)
+        return
+      }
+      
       const data = await response.json()
       if (data.state) {
         setGameState(data.state)
       }
     } catch (error) {
       console.error('Failed to start hand:', error)
+      alert('Failed to start hand. Please check the console for details.')
     }
   }
 
@@ -132,10 +167,26 @@ export default function Home() {
       return
     }
 
-    const tid = await createTable()
+    let tid = tableId
+
+    // If no tableId, create a new table
+    if (!tid) {
+      tid = await createTable()
+    }
+
     if (tid) {
-      await joinTable(tid, playerName)
-      connectWebSocket(tid)
+      const pid = await joinTable(tid, playerName)
+      if (pid) {
+        // Fetch initial game state
+        try {
+          const response = await fetch(`${API_URL}/api/tables/${tid}/state${pid ? `?player_id=${pid}` : ''}`)
+          const data = await response.json()
+          setGameState(data)
+        } catch (error) {
+          console.error('Failed to fetch initial state:', error)
+        }
+        connectWebSocket(tid, pid)
+      }
     }
   }
 
@@ -160,7 +211,7 @@ export default function Home() {
       <main className="min-h-screen bg-gradient-to-b from-green-800 to-green-900 p-4">
         <div className="container mx-auto">
           <h1 className="text-4xl font-bold text-center text-white mb-8">
-            9-Max No Limit Hold'em
+            9-Max No Limit Hold&apos;em
           </h1>
 
           {!tableId ? (
@@ -180,12 +231,36 @@ export default function Home() {
                 Create & Join Table
               </button>
             </div>
+          ) : !playerId ? (
+            <div className="max-w-md mx-auto bg-white rounded-lg shadow-lg p-8">
+              <h2 className="text-2xl font-bold mb-4">Join Existing Table</h2>
+              <p className="text-gray-600 mb-4">Table ID: {tableId}</p>
+              <input
+                type="text"
+                placeholder="Enter your name"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                onClick={handleStart}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition"
+              >
+                Join Table
+              </button>
+            </div>
           ) : (
             <div>
               <div className="flex justify-between items-center mb-4">
                 <div className="text-white">
                   <p>Table ID: {tableId}</p>
                   <p>Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
+                  <p className="text-sm mt-2">
+                    Share this URL to invite others: 
+                    <span className="bg-gray-800 px-2 py-1 rounded ml-2 font-mono text-xs">
+                      {typeof window !== 'undefined' ? window.location.origin + `/?tableId=${tableId}` : ''}
+                    </span>
+                  </p>
                 </div>
                 {gameState?.phase === 'waiting' && (
                   <button
