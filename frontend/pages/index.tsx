@@ -287,9 +287,26 @@ export default function Home() {
               />
               <button
                 onClick={handleStart}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition"
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition mb-3"
               >
                 Join Table
+              </button>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">or</span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setTableId(null)
+                  router.push('/', undefined, { shallow: true })
+                }}
+                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition"
+              >
+                Create New Table
               </button>
             </div>
           ) : (
