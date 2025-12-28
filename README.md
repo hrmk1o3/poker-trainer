@@ -11,6 +11,20 @@ A full-stack poker training application featuring 9-max No Limit Hold'em with AI
 - **Fast Backend**: FastAPI with async support
 - **Hand History**: Optional PostgreSQL database for storing hand history
 
+## 📖 Documentation
+
+すべてのドキュメントは`docs/`ディレクトリに配置されています。
+
+- **[docs/RULES.md](docs/RULES.md)**: Complete poker rules and game mechanics documentation
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: System architecture and design decisions
+- **[docs/API.md](docs/API.md)**: API endpoint documentation
+- **[docs/BACKEND_START.md](docs/BACKEND_START.md)**: Backend setup and development guide
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)**: Contribution guidelines
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**: Deployment instructions
+- **[docs/ISSUES.md](docs/ISSUES.md)**: Known issues and fixes
+
+詳細は[docs/README.md](docs/README.md)を参照してください。
+
 ## 🏗️ Architecture
 
 | Layer | Technology | Purpose |

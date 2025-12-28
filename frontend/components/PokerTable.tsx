@@ -10,7 +10,7 @@ interface PokerTableProps {
 }
 
 export default function PokerTable({ gameState, playerId, onAction }: PokerTableProps) {
-  const { players, community_cards, pot, current_bet, current_player_id, phase } = gameState
+  const { players, community_cards, pot, current_bet, current_player_id, phase, last_raise_size, big_blind } = gameState
 
   // 9-max seat positions (clockwise from dealer)
   const seatPositions = [
@@ -90,6 +90,10 @@ export default function PokerTable({ gameState, playerId, onAction }: PokerTable
             currentBet={current_bet}
             playerBet={currentPlayer.bet}
             playerStack={currentPlayer.stack}
+            playerId={playerId || ''}
+            phase={phase}
+            lastRaiseSize={last_raise_size}
+            bigBlind={big_blind}
             onAction={onAction}
           />
         </div>

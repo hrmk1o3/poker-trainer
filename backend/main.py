@@ -1,11 +1,12 @@
 """
 Main FastAPI application for 9-max No Limit Hold'em poker game.
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Set
 import json
 import uuid
+import asyncio
 from datetime import datetime
 
 from game.poker_game import PokerGame
@@ -90,13 +91,13 @@ async def create_table(request: CreateTableRequest):
 
 
 @app.get("/api/tables/{table_id}/state")
-async def get_table_state(table_id: str):
+async def get_table_state(table_id: str, player_id: str = None):
     """Get current state of a poker table."""
     if table_id not in active_games:
         raise HTTPException(status_code=404, detail="Table not found")
     
     game = active_games[table_id]
-    return game.get_state()
+    return game.get_state(requesting_player_id=player_id)
 
 
 @app.post("/api/tables/{table_id}/join")
@@ -122,6 +123,29 @@ async def join_table(table_id: str, player_name: str):
     return {"player_id": player_id, "table_id": table_id}
 
 
+async def auto_start_next_hand(table_id: str, delay: float = 2.0):
+    """Automatically start the next hand after a delay."""
+    await asyncio.sleep(delay)
+    
+    if table_id not in active_games:
+        return
+    
+    game = active_games[table_id]
+    
+    # Check if game is still finished (not manually started)
+    if game.phase.value == "finished":
+        try:
+            game.start_new_hand()
+            
+            # Broadcast updated state to all connected clients
+            await manager.broadcast({
+                "type": "hand_started",
+                "state": game.get_state()
+            }, table_id)
+        except Exception as e:
+            print(f"Error auto-starting hand for table {table_id}: {e}")
+
+
 @app.post("/api/tables/{table_id}/action")
 async def player_action(table_id: str, action: PlayerAction):
     """Process a player action (fold, call, raise, check)."""
@@ -137,12 +161,19 @@ async def player_action(table_id: str, action: PlayerAction):
             amount=action.amount
         )
         
+        # Get updated state
+        updated_state = game.get_state()
+        
         # Broadcast updated state to all connected clients
         await manager.broadcast({
             "type": "action_processed",
             "action": action.dict(),
-            "state": game.get_state()
+            "state": updated_state
         }, table_id)
+        
+        # If game is finished, schedule next hand to start in 2 seconds
+        if updated_state.get("phase") == "finished":
+            asyncio.create_task(auto_start_next_hand(table_id, 2.0))
         
         return result
     except Exception as e:
@@ -204,11 +235,19 @@ async def websocket_endpoint(websocket: WebSocket, table_id: str):
                             action_type=message["action_type"],
                             amount=message.get("amount", 0)
                         )
+                        
+                        # Get updated state
+                        updated_state = game.get_state()
+                        
                         await manager.broadcast({
                             "type": "action_processed",
                             "action": message,
-                            "state": game.get_state()
+                            "state": updated_state
                         }, table_id)
+                        
+                        # If game is finished, schedule next hand to start in 2 seconds
+                        if updated_state.get("phase") == "finished":
+                            asyncio.create_task(auto_start_next_hand(table_id, 2.0))
                     except Exception as e:
                         await websocket.send_json({
                             "type": "error",

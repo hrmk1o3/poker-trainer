@@ -1,40 +1,73 @@
 import React, { useState } from 'react'
-import { PlayerAction } from '@/lib/types'
+import { PlayerAction, GamePhase } from '@/lib/types'
 
 interface ActionButtonsProps {
   currentBet: number
   playerBet: number
   playerStack: number
+  playerId: string
+  phase: GamePhase
+  lastRaiseSize: number
+  bigBlind: number
   onAction: (action: PlayerAction) => void
 }
 
-export default function ActionButtons({ 
-  currentBet, 
-  playerBet, 
-  playerStack, 
-  onAction 
+export default function ActionButtons({
+  currentBet,
+  playerBet,
+  playerStack,
+  playerId,
+  phase,
+  lastRaiseSize,
+  bigBlind,
+  onAction
 }: ActionButtonsProps) {
-  const [raiseAmount, setRaiseAmount] = useState<number>(currentBet * 2)
+  // Calculate minimum raise according to poker rules:
+  // min_raise = max(current_bet + last_raise_size, current_bet * 2)
+  // For the first raise in a round, last_raise_size is the big blind
+  const minRaise = currentBet > 0
+    ? Math.max(currentBet + (lastRaiseSize || bigBlind), currentBet * 2)
+    : bigBlind
+
+  const [raiseAmount, setRaiseAmount] = useState<number>(minRaise)
 
   const callAmount = currentBet - playerBet
   const canCheck = playerBet >= currentBet
-  const minRaise = currentBet * 2
+  const canFold = !canCheck  // Cannot fold if you can check
+  
+  // Post-flop rules: 
+  // - When no one has bet (currentBet == 0): only Check and Bet are allowed
+  // - When someone has bet (currentBet > 0): only Fold, Call, and Raise are allowed
+  const isPostFlop = phase === 'flop' || phase === 'turn' || phase === 'river'
+  const noOneHasBet = currentBet === 0
+  const someoneHasBet = currentBet > 0
+  
+  // Determine which actions are available based on phase and betting situation
+  const canShowFold = canFold && (!isPostFlop || someoneHasBet)
+  const canShowCheck = canCheck && (!isPostFlop || noOneHasBet)
+  const canShowCall = !canCheck && (!isPostFlop || someoneHasBet)
+  const canShowBet = !isPostFlop || noOneHasBet
+  const canShowRaise = !isPostFlop || someoneHasBet
 
   const handleFold = () => {
-    onAction({ player_id: '', action_type: 'fold', amount: 0 })
+    if (!canFold) {
+      alert('Cannot fold when you can check. You must check, bet, or raise.')
+      return
+    }
+    onAction({ player_id: playerId, action_type: 'fold', amount: 0 })
   }
 
   const handleCheck = () => {
-    onAction({ player_id: '', action_type: 'check', amount: 0 })
+    onAction({ player_id: playerId, action_type: 'check', amount: 0 })
   }
 
   const handleCall = () => {
-    onAction({ player_id: '', action_type: 'call', amount: 0 })
+    onAction({ player_id: playerId, action_type: 'call', amount: 0 })
   }
 
   const handleRaise = () => {
     if (raiseAmount >= minRaise && raiseAmount <= playerStack) {
-      onAction({ player_id: '', action_type: 'raise', amount: raiseAmount })
+      onAction({ player_id: playerId, action_type: 'raise', amount: raiseAmount })
     } else {
       alert(`Raise must be between $${minRaise} and $${playerStack}`)
     }
@@ -42,14 +75,14 @@ export default function ActionButtons({
 
   const handleBet = () => {
     if (raiseAmount > 0 && raiseAmount <= playerStack) {
-      onAction({ player_id: '', action_type: 'bet', amount: raiseAmount })
+      onAction({ player_id: playerId, action_type: 'bet', amount: raiseAmount })
     } else {
       alert(`Bet must be between $1 and $${playerStack}`)
     }
   }
 
   const handleAllIn = () => {
-    onAction({ player_id: '', action_type: 'all_in', amount: playerStack })
+    onAction({ player_id: playerId, action_type: 'all_in', amount: playerStack })
   }
 
   return (
@@ -57,22 +90,25 @@ export default function ActionButtons({
       <div className="flex flex-wrap gap-3 justify-center items-center">
         
         {/* Fold Button */}
-        <button
-          onClick={handleFold}
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
-        >
-          Fold
-        </button>
+        {canShowFold && (
+          <button
+            onClick={handleFold}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+          >
+            Fold
+          </button>
+        )}
 
         {/* Check/Call Button */}
-        {canCheck ? (
+        {canShowCheck && (
           <button
             onClick={handleCheck}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
           >
             Check
           </button>
-        ) : (
+        )}
+        {canShowCall && (
           <button
             onClick={handleCall}
             className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
@@ -82,32 +118,34 @@ export default function ActionButtons({
         )}
 
         {/* Raise/Bet Controls */}
-        <div className="flex gap-2 items-center">
-          <input
-            type="number"
-            value={raiseAmount}
-            onChange={(e) => setRaiseAmount(parseInt(e.target.value) || 0)}
-            min={currentBet > 0 ? minRaise : 1}
-            max={playerStack}
-            className="w-32 px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-black font-bold"
-          />
-          
-          {currentBet > 0 ? (
-            <button
-              onClick={handleRaise}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
-            >
-              Raise
-            </button>
-          ) : (
-            <button
-              onClick={handleBet}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
-            >
-              Bet
-            </button>
-          )}
-        </div>
+        {(canShowBet || canShowRaise) && (
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              value={raiseAmount}
+              onChange={(e) => setRaiseAmount(parseInt(e.target.value) || 0)}
+              min={currentBet > 0 ? minRaise : 1}
+              max={playerStack}
+              className="w-32 px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-black font-bold"
+            />
+            
+            {canShowRaise && currentBet > 0 ? (
+              <button
+                onClick={handleRaise}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+              >
+                Raise
+              </button>
+            ) : canShowBet && currentBet === 0 ? (
+              <button
+                onClick={handleBet}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg"
+              >
+                Bet
+              </button>
+            ) : null}
+          </div>
+        )}
 
         {/* All-In Button */}
         <button
@@ -121,13 +159,13 @@ export default function ActionButtons({
       {/* Quick Bet Buttons */}
       <div className="flex gap-2 justify-center mt-4">
         <button
-          onClick={() => setRaiseAmount(Math.floor(currentBet * 2))}
+          onClick={() => setRaiseAmount(minRaise)}
           className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
         >
           Min
         </button>
         <button
-          onClick={() => setRaiseAmount(Math.floor(currentBet * 3))}
+          onClick={() => setRaiseAmount(Math.min(bigBlind * 3, playerStack))}
           className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
         >
           3x BB
