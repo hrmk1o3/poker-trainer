@@ -6,7 +6,7 @@ import uuid
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from ..models.game_state import (
+from models.game_state import (
     GamePhase, ActionType, PlayerState, GameStateResponse
 )
 

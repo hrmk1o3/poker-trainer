@@ -8,8 +8,8 @@ import json
 import uuid
 from datetime import datetime
 
-from .game.poker_game import PokerGame
-from .models.game_state import GameStateResponse, PlayerAction, CreateTableRequest
+from game.poker_game import PokerGame
+from models.game_state import GameStateResponse, PlayerAction, CreateTableRequest
 
 app = FastAPI(title="Poker Trainer API", version="1.0.0")
 
