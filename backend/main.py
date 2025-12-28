@@ -11,6 +11,7 @@ from datetime import datetime
 
 from game.poker_game import PokerGame
 from models.game_state import GameStateResponse, PlayerAction, CreateTableRequest
+from ai.cfr_engine import PokerAI
 
 app = FastAPI(title="Poker Trainer API", version="1.0.0")
 
@@ -23,9 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store active games and WebSocket connections
+# Store active games, WebSocket connections, and AI players
 active_games: Dict[str, PokerGame] = {}
 active_connections: Dict[str, Set[WebSocket]] = {}
+ai_players: Dict[str, PokerAI] = {}  # Maps player_id to PokerAI instance
 
 
 class ConnectionManager:
@@ -105,13 +107,13 @@ async def join_table(table_id: str, player_name: str):
     """Join a poker table as a new player."""
     if table_id not in active_games:
         raise HTTPException(status_code=404, detail="Table not found")
-    
+
     game = active_games[table_id]
     player_id = game.add_player(player_name)
-    
+
     if player_id is None:
         raise HTTPException(status_code=400, detail="Table is full")
-    
+
     # Broadcast updated state to all connected clients
     await manager.broadcast({
         "type": "player_joined",
@@ -119,29 +121,125 @@ async def join_table(table_id: str, player_name: str):
         "player_id": player_id,
         "state": game.get_state()
     }, table_id)
-    
+
     return {"player_id": player_id, "table_id": table_id}
+
+
+@app.post("/api/tables/{table_id}/add-ai")
+async def add_ai_player(table_id: str, ai_name: str = None, aggression_level: float = 0.5):
+    """Add an AI player to the table."""
+    if table_id not in active_games:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    game = active_games[table_id]
+
+    # Generate AI name if not provided
+    if not ai_name:
+        ai_count = sum(1 for pid in ai_players if pid in [p.player_id for p in game.players])
+        ai_names = ["AI-Alpha", "AI-Beta", "AI-Gamma", "AI-Delta",
+                   "AI-Epsilon", "AI-Zeta", "AI-Eta", "AI-Theta"]
+        ai_name = ai_names[min(ai_count, len(ai_names) - 1)]
+
+    # Add player to game
+    player_id = game.add_player(ai_name)
+
+    if player_id is None:
+        raise HTTPException(status_code=400, detail="Table is full")
+
+    # Create AI instance for this player
+    ai_players[player_id] = PokerAI(player_id, aggression_level)
+
+    # Broadcast updated state
+    await manager.broadcast({
+        "type": "player_joined",
+        "player_name": ai_name,
+        "player_id": player_id,
+        "is_ai": True,
+        "state": game.get_state()
+    }, table_id)
+
+    return {"player_id": player_id, "table_id": table_id, "ai_name": ai_name}
+
+
+async def process_ai_actions(table_id: str):
+    """Process actions for all AI players in the table."""
+    if table_id not in active_games:
+        return
+
+    game = active_games[table_id]
+
+    # Check if current player is an AI
+    if game.phase.value in ["preflop", "flop", "turn", "river"]:
+        current_player_id = None
+        if 0 <= game.current_player_index < len(game.players):
+            current_player_id = game.players[game.current_player_index].player_id
+
+        if current_player_id and current_player_id in ai_players:
+            # Add small delay to make it feel more natural
+            await asyncio.sleep(1.0)
+
+            # Get AI decision
+            ai = ai_players[current_player_id]
+            game_state = game.get_state(requesting_player_id=current_player_id)
+
+            try:
+                action_type, amount = ai.make_decision(game_state)
+
+                # Process AI action
+                result = game.process_action(
+                    player_id=current_player_id,
+                    action_type=action_type,
+                    amount=amount
+                )
+
+                # Get updated state
+                updated_state = game.get_state()
+
+                # Broadcast updated state
+                await manager.broadcast({
+                    "type": "action_processed",
+                    "action": {
+                        "player_id": current_player_id,
+                        "action_type": action_type,
+                        "amount": amount
+                    },
+                    "is_ai_action": True,
+                    "state": updated_state
+                }, table_id)
+
+                # If game is finished, schedule next hand
+                if updated_state.get("phase") == "finished":
+                    asyncio.create_task(auto_start_next_hand(table_id, 2.0))
+                else:
+                    # Continue processing AI actions if next player is also AI
+                    asyncio.create_task(process_ai_actions(table_id))
+
+            except Exception as e:
+                print(f"Error processing AI action for {current_player_id}: {e}")
 
 
 async def auto_start_next_hand(table_id: str, delay: float = 2.0):
     """Automatically start the next hand after a delay."""
     await asyncio.sleep(delay)
-    
+
     if table_id not in active_games:
         return
-    
+
     game = active_games[table_id]
-    
+
     # Check if game is still finished (not manually started)
     if game.phase.value == "finished":
         try:
             game.start_new_hand()
-            
+
             # Broadcast updated state to all connected clients
             await manager.broadcast({
                 "type": "hand_started",
                 "state": game.get_state()
             }, table_id)
+
+            # Check if first player is AI and trigger their action
+            asyncio.create_task(process_ai_actions(table_id))
         except Exception as e:
             print(f"Error auto-starting hand for table {table_id}: {e}")
 
@@ -151,30 +249,33 @@ async def player_action(table_id: str, action: PlayerAction):
     """Process a player action (fold, call, raise, check)."""
     if table_id not in active_games:
         raise HTTPException(status_code=404, detail="Table not found")
-    
+
     game = active_games[table_id]
-    
+
     try:
         result = game.process_action(
             player_id=action.player_id,
             action_type=action.action_type,
             amount=action.amount
         )
-        
+
         # Get updated state
         updated_state = game.get_state()
-        
+
         # Broadcast updated state to all connected clients
         await manager.broadcast({
             "type": "action_processed",
             "action": action.dict(),
             "state": updated_state
         }, table_id)
-        
+
         # If game is finished, schedule next hand to start in 2 seconds
         if updated_state.get("phase") == "finished":
             asyncio.create_task(auto_start_next_hand(table_id, 2.0))
-        
+        else:
+            # Check if next player is AI and process their action
+            asyncio.create_task(process_ai_actions(table_id))
+
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -185,18 +286,21 @@ async def start_game(table_id: str):
     """Start a new hand at the table."""
     if table_id not in active_games:
         raise HTTPException(status_code=404, detail="Table not found")
-    
+
     game = active_games[table_id]
-    
+
     try:
         game.start_new_hand()
-        
+
         # Broadcast updated state to all connected clients
         await manager.broadcast({
             "type": "hand_started",
             "state": game.get_state()
         }, table_id)
-        
+
+        # Check if first player is AI and trigger their action
+        asyncio.create_task(process_ai_actions(table_id))
+
         return {"status": "hand_started", "state": game.get_state()}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -244,10 +348,13 @@ async def websocket_endpoint(websocket: WebSocket, table_id: str):
                             "action": message,
                             "state": updated_state
                         }, table_id)
-                        
+
                         # If game is finished, schedule next hand to start in 2 seconds
                         if updated_state.get("phase") == "finished":
                             asyncio.create_task(auto_start_next_hand(table_id, 2.0))
+                        else:
+                            # Check if next player is AI and process their action
+                            asyncio.create_task(process_ai_actions(table_id))
                     except Exception as e:
                         await websocket.send_json({
                             "type": "error",

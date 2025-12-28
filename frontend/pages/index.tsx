@@ -62,6 +62,32 @@ export default function Home() {
     }
   }
 
+  // Add AI player
+  const addAIPlayer = async () => {
+    if (!tableId) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/tables/${tableId}/add-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        const errorMessage = errorData.detail || errorData.message || 'Failed to add AI player'
+        alert(errorMessage)
+        console.error('Failed to add AI player:', errorMessage)
+        return
+      }
+
+      const data = await response.json()
+      console.log('AI player added:', data)
+    } catch (error) {
+      console.error('Failed to add AI player:', error)
+      alert('Failed to add AI player. Please check the console for details.')
+    }
+  }
+
   // Connect to WebSocket
   const connectWebSocket = useCallback((tid: string, pid: string | null = null) => {
     const websocket = new WebSocket(`${WS_URL}/ws/${tid}`)
@@ -256,20 +282,28 @@ export default function Home() {
                   <p>Table ID: {tableId}</p>
                   <p>Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
                   <p className="text-sm mt-2">
-                    Share this URL to invite others: 
+                    Share this URL to invite others:
                     <span className="bg-gray-800 px-2 py-1 rounded ml-2 font-mono text-xs">
                       {typeof window !== 'undefined' ? window.location.origin + `/?tableId=${tableId}` : ''}
                     </span>
                   </p>
                 </div>
-                {gameState?.phase === 'waiting' && (
+                <div className="flex gap-3">
                   <button
-                    onClick={startHand}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition"
+                    onClick={addAIPlayer}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg transition"
                   >
-                    Start Hand
+                    Add AI Player
                   </button>
-                )}
+                  {gameState?.phase === 'waiting' && (
+                    <button
+                      onClick={startHand}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition"
+                    >
+                      Start Hand
+                    </button>
+                  )}
+                </div>
               </div>
 
               {gameState ? (
