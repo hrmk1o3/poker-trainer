@@ -3,9 +3,12 @@ Basic tests for the Poker Game engine.
 Run with: pytest test_poker_game.py
 """
 import sys
-sys.path.insert(0, '..')
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from game.poker_game import PokerGame, Card, Deck, Player
+import pytest
 
 
 def test_deck_creation():
@@ -91,6 +94,65 @@ def test_get_state():
     assert state["pot"] == 0
     assert state["small_blind"] == 5
     assert state["big_blind"] == 10
+
+
+def test_out_of_turn_action_rejected():
+    game = PokerGame("table1", 9, 5, 10, 1000)
+    game.add_player("Alice")
+    game.add_player("Bob")
+    game.start_new_hand()
+
+    current_player_id = game.players[game.current_player_index].player_id
+    other_player_id = next(p.player_id for p in game.players if p.player_id != current_player_id)
+
+    with pytest.raises(ValueError, match="Not your turn"):
+        game.process_action(other_player_id, "call", 0)
+
+
+def test_raise_charges_only_additional_amount():
+    game = PokerGame("table1", 9, 5, 10, 1000)
+    game.add_player("Alice")
+    game.add_player("Bob")
+    game.start_new_hand()
+
+    # In heads-up, SB acts first preflop.
+    sb = game.players[game.current_player_index]
+
+    # SB posted 5 and faces a 10 BB; raising to 20 should pay +15 only.
+    game.process_action(sb.player_id, "raise", 20)
+
+    assert sb.bet == 20
+    assert sb.stack == 1000 - 5 - 15
+    assert game.current_bet == 20
+
+
+def test_bet_minimum_big_blind_enforced_unless_short_all_in():
+    game = PokerGame("table1", 9, 5, 10, 1000)
+    game.add_player("Alice")
+    game.add_player("Bob")
+    game.start_new_hand()
+
+    # Complete preflop quickly: SB calls, BB checks -> flop (current_bet resets to 0)
+    sb = game.players[game.current_player_index]
+    bb = next(p for p in game.players if p.player_id != sb.player_id)
+
+    game.process_action(sb.player_id, "call", 0)
+    game.process_action(bb.player_id, "check", 0)
+
+    assert game.phase.value == "flop"
+    assert game.current_bet == 0
+
+    # It is SB's turn again on flop.
+    current = game.players[game.current_player_index]
+
+    with pytest.raises(ValueError, match="Bet must be at least"):
+        game.process_action(current.player_id, "bet", 1)
+
+    # Short stack can go all-in for less than BB.
+    current.stack = 7
+    game.process_action(current.player_id, "bet", 7)
+    assert current.is_all_in is True
+    assert game.current_bet == current.bet
 
 
 if __name__ == "__main__":

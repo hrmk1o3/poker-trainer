@@ -151,6 +151,12 @@ export default function Home() {
         })
       })
       const data = await response.json()
+      if (!response.ok) {
+        const errorMessage = data?.detail || data?.message || 'Failed to process action'
+        alert(errorMessage)
+        console.error('Failed to process action:', errorMessage)
+        return
+      }
       if (data.state) {
         setGameState(data.state)
       }

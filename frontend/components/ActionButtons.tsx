@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { PlayerAction, GamePhase } from '@/lib/types'
 
 interface ActionButtonsProps {
@@ -22,6 +22,8 @@ export default function ActionButtons({
   bigBlind,
   onAction
 }: ActionButtonsProps) {
+  const maxTotal = playerBet + playerStack
+
   // Calculate minimum raise according to poker rules:
   // min_raise = max(current_bet + last_raise_size, current_bet * 2)
   // For the first raise in a round, last_raise_size is the big blind
@@ -29,9 +31,19 @@ export default function ActionButtons({
     ? Math.max(currentBet + (lastRaiseSize || bigBlind), currentBet * 2)
     : bigBlind
 
-  const [raiseAmount, setRaiseAmount] = useState<number>(minRaise)
+  // Minimum bet total (when no one has bet) is BB, unless the player is shorter (then only all-in is possible)
+  const minBetTotal = Math.min(bigBlind, maxTotal)
 
-  const callAmount = currentBet - playerBet
+  const minTargetTotal = currentBet > 0 ? minRaise : minBetTotal
+
+  const [raiseAmount, setRaiseAmount] = useState<number>(minTargetTotal)
+
+  useEffect(() => {
+    // Keep input in a valid range when game state changes.
+    setRaiseAmount((prev) => clamp(prev, minTargetTotal, maxTotal))
+  }, [minTargetTotal, maxTotal])
+
+  const callAmount = Math.max(0, currentBet - playerBet)
   const canCheck = playerBet >= currentBet
   const canFold = !canCheck  // Cannot fold if you can check
   
@@ -66,18 +78,18 @@ export default function ActionButtons({
   }
 
   const handleRaise = () => {
-    if (raiseAmount >= minRaise && raiseAmount <= playerStack) {
+    if (raiseAmount >= minRaise && raiseAmount <= maxTotal) {
       onAction({ player_id: playerId, action_type: 'raise', amount: raiseAmount })
     } else {
-      alert(`Raise must be between $${minRaise} and $${playerStack}`)
+      alert(`Raise must be between $${minRaise} and $${maxTotal}`)
     }
   }
 
   const handleBet = () => {
-    if (raiseAmount > 0 && raiseAmount <= playerStack) {
+    if (raiseAmount >= minBetTotal && raiseAmount <= maxTotal) {
       onAction({ player_id: playerId, action_type: 'bet', amount: raiseAmount })
     } else {
-      alert(`Bet must be between $1 and $${playerStack}`)
+      alert(`Bet must be between $${minBetTotal} and $${maxTotal}`)
     }
   }
 
@@ -124,8 +136,8 @@ export default function ActionButtons({
               type="number"
               value={raiseAmount}
               onChange={(e) => setRaiseAmount(parseInt(e.target.value) || 0)}
-              min={currentBet > 0 ? minRaise : 1}
-              max={playerStack}
+              min={minTargetTotal}
+              max={maxTotal}
               className="w-12 sm:w-14 md:w-16 lg:w-20 px-1 sm:px-1.5 md:px-2 py-1 sm:py-1.5 md:py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 text-black font-bold text-xs sm:text-sm md:text-base"
             />
 
@@ -159,13 +171,13 @@ export default function ActionButtons({
       {/* Quick Bet Buttons */}
       <div className="flex flex-wrap gap-1 justify-center mt-1 sm:mt-1.5 md:mt-2">
         <button
-          onClick={() => setRaiseAmount(minRaise)}
+          onClick={() => setRaiseAmount(clamp(minTargetTotal, minTargetTotal, maxTotal))}
           className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           Min
         </button>
         <button
-          onClick={() => setRaiseAmount(Math.min(bigBlind * 3, playerStack))}
+          onClick={() => setRaiseAmount(clamp(bigBlind * 3, minTargetTotal, maxTotal))}
           className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           3x BB
@@ -173,14 +185,14 @@ export default function ActionButtons({
         <button
           onClick={() => {
             const pot = currentBet * 2 // Simplified pot calculation
-            setRaiseAmount(Math.min(Math.floor(pot), playerStack))
+            setRaiseAmount(clamp(Math.floor(pot), minTargetTotal, maxTotal))
           }}
           className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           Pot
         </button>
         <button
-          onClick={() => setRaiseAmount(playerStack)}
+          onClick={() => setRaiseAmount(maxTotal)}
           className="bg-gray-700 hover:bg-gray-600 text-white px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded text-[0.65rem] sm:text-xs md:text-sm"
         >
           All-In
@@ -188,4 +200,10 @@ export default function ActionButtons({
       </div>
     </div>
   )
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min
+  if (max < min) return max
+  return Math.min(Math.max(value, min), max)
 }
