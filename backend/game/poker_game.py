@@ -208,6 +208,19 @@ class PokerGame:
         
         if player.has_folded or not player.is_active:
             raise ValueError("Player cannot act")
+
+        if player.is_all_in:
+            raise ValueError("Player cannot act")
+
+        # Turn / phase validation (server-side rule enforcement)
+        if self.phase not in [GamePhase.PREFLOP, GamePhase.FLOP, GamePhase.TURN, GamePhase.RIVER]:
+            raise ValueError("Hand is not in progress")
+
+        if not (0 <= self.current_player_index < len(self.players)):
+            raise ValueError("No current player to act")
+
+        if self.players[self.current_player_index].player_id != player_id:
+            raise ValueError("Not your turn")
         
         # Process action
         if action_type == ActionType.FOLD:
@@ -230,7 +243,10 @@ class PokerGame:
             # Post-flop rule: Call is only allowed when someone has bet (current_bet > 0)
             if self.phase != GamePhase.PREFLOP and self.current_bet == 0:
                 raise ValueError("Cannot call when no one has bet. You must check or bet.")
-            call_amount = min(self.current_bet - player.bet, player.stack)
+            needed = self.current_bet - player.bet
+            if needed <= 0:
+                raise ValueError("Nothing to call. You must check or bet/raise.")
+            call_amount = min(needed, player.stack)
             player.stack -= call_amount
             player.bet += call_amount
             self.pot += call_amount
@@ -246,40 +262,62 @@ class PokerGame:
                 if action_type == ActionType.RAISE and self.current_bet == 0:
                     raise ValueError("Cannot raise when no one has bet. You must check or bet.")
             
+            if amount is None:
+                amount = 0
+
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+
+            # The API semantics for BET/RAISE are "target total bet" for this player
+            # e.g. if player.bet is 10 and they raise to 30, amount == 30 and they pay 20 more.
+            max_total = player.bet + player.stack
+            target_total = min(int(amount), max_total)
+            amount = target_total
+
+            if target_total <= player.bet:
+                raise ValueError("Bet/raise must increase your total bet")
+
+            # Validate action type vs current bet (post-flop rules already checked above)
             if self.current_bet > 0:
-                # Raise: must be at least the previous bet + the last raise size
-                # Or at least 2x the current bet (whichever is larger)
-                # For the first raise in a round, last_raise_size is the big blind
-                min_raise_amount = max(
+                if target_total <= self.current_bet:
+                    raise ValueError("Raise must be greater than current bet")
+
+                min_raise_total = max(
                     self.current_bet + (self.last_raise_size if self.last_raise_size > 0 else self.big_blind),
                     self.current_bet * 2
                 )
-                if amount < min_raise_amount:
-                    raise ValueError(f"Raise must be at least {min_raise_amount}")
-                
-                # Calculate the raise size (amount - current_bet)
-                raise_size = amount - self.current_bet
+
+                # Allow an all-in raise below min raise only if the player cannot cover the minimum.
+                if target_total < min_raise_total and target_total < max_total:
+                    raise ValueError(f"Raise must be at least {min_raise_total}")
             else:
-                # Bet: must be at least the big blind
-                if amount < self.big_blind:
-                    raise ValueError(f"Bet must be at least {self.big_blind}")
-                raise_size = amount
-            
-            bet_amount = min(amount, player.stack)
-            player.stack -= bet_amount
-            player.bet += bet_amount
-            self.pot += bet_amount
-            
-            # Update current bet and last raise size
-            if player.bet > self.current_bet:
-                if self.current_bet > 0:
-                    # This is a raise, track the raise size
-                    self.last_raise_size = player.bet - self.current_bet
+                # Bet: must be at least the big blind, unless the player is all-in for less.
+                min_bet_total = self.big_blind
+                if target_total < min_bet_total and target_total < max_total:
+                    raise ValueError(f"Bet must be at least {min_bet_total}")
+
+            additional = target_total - player.bet
+            player.stack -= additional
+            player.bet = target_total
+            self.pot += additional
+
+            # This is an aggressive action; everyone else needs to act after this.
+            previous_current_bet = self.current_bet
+            if target_total > self.current_bet:
+                # Update last raise size only for a full raise that meets the min raise requirement.
+                if previous_current_bet > 0:
+                    min_raise_total = max(
+                        previous_current_bet + (self.last_raise_size if self.last_raise_size > 0 else self.big_blind),
+                        previous_current_bet * 2
+                    )
+                    if target_total >= min_raise_total:
+                        self.last_raise_size = target_total - previous_current_bet
                 else:
-                    # This is a bet, the raise size is the bet amount
-                    self.last_raise_size = player.bet
-                self.current_bet = player.bet
-                # Track who raised/bet last - everyone else needs to act after this
+                    # First bet in a round sets the raise size to the bet amount (unless it's a short all-in).
+                    if target_total >= self.big_blind:
+                        self.last_raise_size = target_total
+
+                self.current_bet = target_total
                 self.last_raiser_index = self.current_player_index
 
             if player.stack == 0:
@@ -388,9 +426,14 @@ class PokerGame:
         # Special case for preflop: BB must have acted (not just posted blind)
         if self.phase == GamePhase.PREFLOP:
             bb_index = (self.dealer_position + 2) % len(self.players)
-            # If BB is the completion point and they haven't acted yet, round is not complete
+            # If BB is the completion point and they haven't acted yet, round is not complete.
             if completion_index == bb_index and not self.bb_has_acted_preflop:
                 return False
+
+            # If BB is the completion point and they *have* acted, preflop betting is complete
+            # as soon as everyone has matched the current bet.
+            if completion_index == bb_index and self.bb_has_acted_preflop:
+                return True
 
         # Check if current player is at the completion point
         # This means everyone after the last raiser has had a chance to act

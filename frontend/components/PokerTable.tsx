@@ -84,7 +84,13 @@ export default function PokerTable({ gameState, playerId, onAction }: PokerTable
       </div>
 
       {/* Action Buttons */}
-      {isCurrentPlayerTurn && currentPlayer && phase !== 'waiting' && phase !== 'finished' && (
+      {isCurrentPlayerTurn &&
+        currentPlayer &&
+        currentPlayer.is_active &&
+        !currentPlayer.has_folded &&
+        !currentPlayer.is_all_in &&
+        phase !== 'waiting' &&
+        phase !== 'finished' && (
         <div className="mt-1 sm:mt-2 md:mt-3">
           <ActionButtons
             currentBet={current_bet}
